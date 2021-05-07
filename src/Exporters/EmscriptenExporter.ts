@@ -114,7 +114,7 @@ export class EmscriptenExporter extends Exporter {
 		this.p('DEF=' + defline);
 		this.p();
 
-		let cline = '-std=c99 ';
+		let cline = '-std=gnu99 ';
 		if (options.dynlib) {
 			cline += '-fPIC ';
 		}
@@ -124,16 +124,23 @@ export class EmscriptenExporter extends Exporter {
 		this.p('CFLAGS=' + cline);
 
 		let cppline = '';
+		if (project.cppstd !== 0) {
+			cppline += '-std=c++' + project.cppstd + ' ';
+		}		
+		if (project.targetOptions.html5.threads) {
+			cppline += ' -pthread';
+		}
 		if (options.dynlib) {
 			cppline += '-fPIC ';
 		}
 		for (let flag of project.cppFlags) {
 			cppline += flag + ' ';
 		}
+
 		this.p('CPPFLAGS=' + cppline);
 
 		let optimization = '';
-		if (!options.debug) optimization = '-O2';
+		if (!options.debug) optimization = '-O2 -flto ';
 		else optimization = '-g';
 
 		if (options.lib) {
@@ -145,26 +152,22 @@ export class EmscriptenExporter extends Exporter {
 		else {
 			this.p('index.html' + ': ' + gchfilelist + ofilelist);
 		}
-
-		let cpp = '';
-		// cpp = '-std=c++11';
-		if (project.targetOptions.html5.threads) {
-			cpp += ' -pthread';
-		}
-
-		let linkerFlags = '-s TOTAL_MEMORY=134217728 ';
+		
+		// let linkerFlags = '-s TOTAL_MEMORY=134217728 ';
+		let prepend = '--pre-js '+ Project.koreDir + '\\Sources\\html5\\Backend.js --pre-js ' + Project.koreDir + '\\Sources\\html5\\Webgl.js '
+		let linkerFlags = '--closure 0 '+ prepend + ' -fno-rtti -s WASM_BIGINT -s ENVIRONMENT=web -s TOTAL_MEMORY=134217728 -s ALLOW_MEMORY_GROWTH=1 ';
 		if (Options.graphicsApi === GraphicsApi.WebGPU) {
 			linkerFlags += '-s USE_WEBGPU=1 ';
 		}
 
-		let output = ' ' + linkerFlags + '-o index.html --preload-file ' + debugDirName;
+		let output = ' ' + linkerFlags + '-o kiss.js --preload-file ' + debugDirName;
 		if (options.lib) {
 			output = '-o "' + project.getSafeName() + '.a"';
 		}
 		else if (options.dynlib) {
 			output = '-shared -o "' + project.getSafeName() + '.so"';
 		}
-		this.p('\t' + (options.lib ? 'ar rcs' : cppCompiler) + ' ' + output + ' ' + cpp + ' ' + optimization + ' ' + ofilelist + ' $(LIB)');
+		this.p('\t' + (options.lib ? 'ar rcs' : cppCompiler) + ' ' + output + ' ' + optimization + ' ' + ofilelist + ' $(LIB)');
 
 		for (let file of project.getFiles()) {
 			let precompiledHeader: string = null;
@@ -177,7 +180,7 @@ export class EmscriptenExporter extends Exporter {
 			if (precompiledHeader !== null) {
 				let realfile = path.relative(outputPath, path.resolve(from, file.file));
 				this.p(path.basename(realfile) + '.gch: ' + realfile);
-				this.p('\t' + cppCompiler + ' ' + cpp + ' ' + optimization + ' $(INC) $(DEF) -c ' + realfile + ' -o ' + path.basename(file.file) + '.gch');
+				this.p('\t' + cppCompiler + ' ' + optimization + ' $(INC) $(DEF) -c ' + realfile + ' -o ' + path.basename(file.file) + '.gch');
 			}
 		}
 
@@ -200,7 +203,7 @@ export class EmscriptenExporter extends Exporter {
 					flags = '';
 				}
 
-				this.p('\t' + compiler + ' ' + cpp + ' ' + optimization + ' $(INC) $(DEF) ' + flags + ' -c ' + realfile + ' -o ' + name + '.o');
+				this.p('\t' + compiler + ' ' + optimization + ' $(INC) $(DEF) ' + flags + ' -c ' + realfile + ' -o ' + name + '.o');
 			}
 		}
 
